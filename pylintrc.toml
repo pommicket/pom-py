@@ -318,7 +318,7 @@ max-module-lines = 1000
 
 [tool.pylint.imports]
 # List of modules that can be imported at any level, not just the top level one.
-allow-any-import-level = ["boto3", "botocore", "pydo"]
+allow-any-import-level = ["copy"]
 
 # Allow explicit reexports by alias from a package __init__.
 # allow-reexport-from-package =
@@ -374,7 +374,14 @@ confidence = ["HIGH", "CONTROL_FLOW", "INFERENCE", "INFERENCE_FAILURE", "UNDEFIN
 # --enable=similarities". If you want to run only the classes checker, but have
 # no Warning level messages displayed, use "--disable=all --enable=classes
 # --disable=W".
-disable = ["raw-checker-failed", "bad-inline-option", "locally-disabled", "file-ignored", "suppressed-message", "useless-suppression", "deprecated-pragma", "use-implicit-booleaness-not-comparison-to-string", "use-implicit-booleaness-not-comparison-to-zero", "use-symbolic-message-instead"]
+disable = ["raw-checker-failed", "bad-inline-option", "locally-disabled", "file-ignored",
+	"suppressed-message", "useless-suppression", "deprecated-pragma",
+	"use-implicit-booleaness-not-comparison-to-string", "use-implicit-booleaness-not-comparison-to-zero",
+	"use-symbolic-message-instead",
+	"protected-access", # way too strict to be useful
+	"too-many-return-statements", # who cares?
+	"too-few-public-methods", # who cares?
+]
 
 # Enable the message, report, category or checker with the given id(s). You can
 # either give multiple identifier separated by comma (,) or put this option

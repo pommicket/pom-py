@@ -6,5 +6,10 @@ import sys
 sys.path.append(str(Path(__file__).parent.parent))
 
 import pom_parser
-filename = 'examples/conf.pom' if len(sys.argv) < 2 else sys.argv[1]
-print(pom_parser.load_path(filename))
+try:
+	filename = 'examples/conf.pom' if len(sys.argv) < 2 else sys.argv[1]
+	conf = pom_parser.load_path(filename)
+	print(conf.get('indentation-type','hafkjd'))
+	print(conf.section('plug-in'))
+except pom_parser.Error as e:
+	print('Parse error:', str(e), sep = '\n')

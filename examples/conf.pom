@@ -1,7 +1,7 @@
 indentation-type = tabs
 show-line-numbers = yes
 tab-size = 4
-font-size = "18"
+font-size = 18
 
 [file-extensions]
 C = .c, .h
