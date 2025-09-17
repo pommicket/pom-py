@@ -1,0 +1,17 @@
+indentation-type = tabs
+show-line-numbers = yes
+tab-size = 4
+font-size = "18"
+
+[file-extensions]
+C = .c, .h
+Cpp = .cpp, .hpp, .cc, .hh
+
+[plug-in.edit-over-ssh]
+path = ~/misc/edit-over-ssh.so
+enabled = yes
+
+[plug-in.wrap-text]
+path = ~/misc/wrap_text_v3.5.7.so
+enabled = no
+

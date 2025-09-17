@@ -1,0 +1,22 @@
+[build-system]
+requires = ["hatchling >= 1.26"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pom_parser"
+version = "0.0.1"
+authors = [
+  { name="pommicket", email="pommicket@gmail.com" },
+]
+description = "A parser for the POM configuration language"
+readme = "README.md"
+requires-python = ">=3.9"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+license = "0BSD"
+
+[project.urls]
+Homepage = "https://pom.computer"
+Issues = "https://github.com/pommicket/pom-py/issues"
