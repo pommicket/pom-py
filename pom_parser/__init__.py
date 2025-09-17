@@ -96,21 +96,24 @@ class _Parser:
 		if key.endswith('.'):
 			self._error(f"Key {key} shouldn't end with .")
 			return
-		# TODO
+		for c in key:
+			o = ord(c)
+			if (0xf800000178000001fc001bffffffffff >> o) & 1:
+				self._error(f"Key {key} contains illegal character {c}")
 
-	def _parse_quoted_value(self, value_start: str) -> str:
-		raise NotImplementedError('TODO: quoted value')
+	def _process_escape_sequence(self, chars: Iterable[str]) -> str:
+		raise NotImplementedError('TODO')
 
-	def _read_line(self) -> bool:
+	def _read_line(self) -> Optional[str]:
 		line_bytes = self.file.readline()
 		if not line_bytes:
-			return False
+			return None
 		self.line_number += 1
 		try:
 			line = line_bytes.decode()
 		except UnicodeDecodeError:
 			self._error('Bad UTF-8')
-			return True
+			return ''
 		if line.endswith('\r\n'):
 			line = line[:-2]
 		elif line.endswith('\n'):
@@ -118,7 +121,37 @@ class _Parser:
 		for c in line:
 			if ord(c) < 32 and c != '\t':
 				self._error(f'Invalid character in file: ASCII control character {ord(c)}')
-				return True
+				return ''
+		return line
+
+	def _parse_quoted_value(self, value_start: str) -> str:
+		delimiter = value_start[0]
+		start_line = self.line_number
+		line = value_start[1:] + '\n'
+		value = []
+		while True:
+			chars = iter(line)
+			while (c := next(chars, None)) is not None:
+				if c == '\\':
+					value.append(self._process_escape_sequence(chars))
+				elif c == delimiter:
+					for stray in chars:
+						if stray not in ' \t\n':
+							self._error(f'Stray {stray} after string.')
+					return ''.join(value)
+				else:
+					value.append(c)
+			line = self._read_line()
+			if line is None:
+				self.line_number = start_line
+				self._error(f'Closing {delimiter} not found.')
+				return ''
+			line += '\n'
+
+	def _parse_line(self) -> bool:
+		line = self._read_line()
+		if line is None:
+			return False
 		line = line.lstrip(' \t')
 		if not line or line.startswith('#'):
 			return True
@@ -151,7 +184,7 @@ class _Parser:
 
 def load_file(filename: str, file: io.BufferedIOBase) -> Configuration:
 	parser = _Parser(filename, file)
-	while parser._read_line():
+	while parser._parse_line():
 		pass
 	if parser.errors:
 		raise Error._from_list(parser.errors)
