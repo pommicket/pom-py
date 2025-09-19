@@ -1,5 +1,5 @@
 import io
-from typing import Optional, Any, Iterable
+from typing import Optional, Any, Iterable, Iterator
 
 class Error(ValueError):
 	next: Optional['Error']
@@ -31,8 +31,47 @@ class Item:
 	value: str
 	file: str
 	line: int
+	read: bool
 	def __repr__(self) -> str:
 		return f'<Item {self.key} at {self.file}:{self.line}>'
+
+	def _error(self, message: str) -> Error:
+		return Error(self.file, self.line, message)
+
+	def _parse_uint(self, using: Optional[str] = None) -> Optional[int]:
+		s = self.value if using is None else using
+		if s.startswith('+'):
+			s = s[1:]
+		if s.startswith('0x') or s.startswith('0X'):
+			if not all(c in '0123456789abcdefABCDEF' for c in s[2:]):
+				return None
+			value = int(s[2:], 16)
+			if value >> 53:
+				return None
+			return value
+		if s == '0':
+			return 0
+		if s.startswith('0'):
+			return None
+		if not all(c in '0123456789' for c in s):
+			return None
+		value = int(s)
+		if value >> 53:
+			return None
+		return value
+
+	def _parse_int(self) -> Optional[int]:
+		sign = 1
+		value = self.value
+		if value.startswith('-'):
+			if value.startswith('-+'):
+				return None
+			sign = -1
+			value = value[1:]
+		uint = self._parse_uint(value)
+		if uint is None:
+			return None
+		return uint * sign
 
 class Configuration:
 	_items: dict[str, Item]
@@ -42,15 +81,51 @@ class Configuration:
 			result.append(f'{item.key}: {repr(item.value)}')
 		return '\n'.join(result)
 
+	def has(self, key: str) -> bool:
+		return key in self._items
+
+	def location(self, key: str) -> Optional[tuple[str, int]]:
+		item = self._items.get(key)
+		if item is None:
+			return item
+		return (item.file, item.line)
+
 	def get(self, key: str, default: Optional[str] = None) -> Optional[str]:
 		item = self._items.get(key)
 		if item is None:
 			return default
+		item.read = True
 		return item.value
+
+	def get_uint(self, key: str, default: Optional[int] = None) -> Optional[int]:
+		item = self._items.get(key)
+		if item is None:
+			return default
+		item.read = True
+		uint = item._parse_uint()
+		if uint is None:
+			raise item._error(f'Value {repr(item.value)} for {item.key} is not a valid (non-negative) integer.')
+		return uint
+
+	def get_int(self, key: str, default: Optional[int] = None) -> Optional[int]:
+		item = self._items.get(key)
+		if item is None:
+			return default
+		item.read = True
+		intv = item._parse_int()
+		if intv is None:
+			raise item._error(f'Value {repr(item.value)} for {item.key} is not a valid integer.')
+		return intv
 
 	def items(self) -> Iterable[Item]:
 		import copy
 		return map(copy.copy, self._items.values())
+
+	def keys(self) -> Iterable[str]:
+		return iter({key.split('.', 1)[0] for key in self._items})
+
+	def unread_keys(self) -> Iterable[str]:
+		return (item.key for item in self._items.values() if not item.read)
 
 	def section(self, name: str) -> 'Configuration':
 		import copy
@@ -63,6 +138,15 @@ class Configuration:
 		conf = Configuration()
 		conf._items = section_items
 		return conf
+
+def _parse_hex_digit(d: Optional[str]) -> Optional[int]:
+	if d in list('0123456789'):
+		return ord(d) - ord('0')
+	if d in list('abcdef'):
+		return ord(d) - ord('a') + 10
+	if d in list('ABCDEF'):
+		return ord(d) - ord('A') + 10
+	return None
 
 class _Parser:
 	line_number: int
@@ -101,8 +185,56 @@ class _Parser:
 			if (0xf800000178000001fc001bffffffffff >> o) & 1:
 				self._error(f"Key {key} contains illegal character {c}")
 
-	def _process_escape_sequence(self, chars: Iterable[str]) -> str:
-		raise NotImplementedError('TODO')
+	def _process_escape_sequence(self, chars: Iterator[str]) -> str:
+		def bad_escape_sequence(chs: Iterable[Optional[str]]) -> str:
+			seq = ''.join(c for c in chs if c)
+			self._error(f'Invalid escape sequence: \\{seq}')
+			return ''
+		c = next(chars, None)
+		simple_sequences: dict[str | None, str] = {
+			'n': '\n', 't': '\t', 'r': '\r',
+			'\'': '\'', '"': '"', '`': '`',
+			',': '\\,', '\\': '\\'
+		}
+		simple = simple_sequences.get(c)
+		if simple is not None:
+			return simple
+		if c == 'x':
+			c1 = next(chars, None)
+			c2 = next(chars, None)
+			dig1 = _parse_hex_digit(c1)
+			dig2 = _parse_hex_digit(c2)
+			if dig1 is None or dig2 is None:
+				return bad_escape_sequence((c, c1, c2))
+			value = dig1 << 4 | dig2
+			if value == 0 or value >= 0x80:
+				return bad_escape_sequence((c, c1, c2))
+			return chr(value)
+		if c == 'u':
+			open_brace = next(chars, None)
+			if open_brace != '{':
+				return bad_escape_sequence((c, open_brace))
+			sequence: list[str | None] = ['u{']
+			value = 0
+			for i in range(7):
+				c = next(chars, None)
+				sequence.append(c)
+				if c == '}':
+					break
+				if i == 6:
+					return bad_escape_sequence(sequence)
+				digit = _parse_hex_digit(c)
+				if digit is None:
+					return bad_escape_sequence(sequence)
+				value <<= 4
+				value |= digit
+			if value == 0 or \
+				0xD800 <= value <= 0xDFFF or \
+				value > 0x10FFFF:
+				return bad_escape_sequence(sequence)
+			return chr(value)
+		bad_escape_sequence((c,))
+		return ''
 
 	def _read_line(self) -> Optional[str]:
 		line_bytes = self.file.readline()
@@ -141,12 +273,12 @@ class _Parser:
 					return ''.join(value)
 				else:
 					value.append(c)
-			line = self._read_line()
-			if line is None:
+			next_line = self._read_line()
+			if next_line is None:
 				self.line_number = start_line
 				self._error(f'Closing {delimiter} not found.')
 				return ''
-			line += '\n'
+			line = next_line + '\n'
 
 	def _parse_line(self) -> bool:
 		line = self._read_line()
@@ -176,6 +308,7 @@ class _Parser:
 		key = f'{self.current_section}.{relative_key}' if self.current_section else relative_key
 		item = Item()
 		item.key = key
+		item.read = False
 		item.value = value
 		item.file = self.filename
 		item.line = self.line_number
