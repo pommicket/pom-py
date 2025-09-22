@@ -73,6 +73,25 @@ class Item:
 			return None
 		return uint * sign
 
+	def _parse_float(self) -> Optional[float]:
+		value = self.value
+		if not all(c in '0123456789eE+-.' for c in value):
+			return None
+		for (i, c) in enumerate(value):
+			# ensure . is preceded and followed by digit
+			if c == '.' and (i == 0 or i == len(value)-1 or \
+				not value[i+1].isdigit() or not value[i-1].isdigit()):
+				return None
+		return float(value)
+
+	def _parse_bool(self) -> Optional[bool]:
+		value = self.value
+		if value in ('yes', 'true', 'on'):
+			return True
+		if value in ('no', 'false', 'off'):
+			return False
+		return None
+
 class Configuration:
 	_items: dict[str, Item]
 	def __repr__(self) -> str:
@@ -100,7 +119,7 @@ class Configuration:
 	def get_uint(self, key: str, default: Optional[int] = None) -> Optional[int]:
 		item = self._items.get(key)
 		if item is None:
-			return default
+			return None if default is None else int(default)
 		item.read = True
 		uint = item._parse_uint()
 		if uint is None:
@@ -110,12 +129,32 @@ class Configuration:
 	def get_int(self, key: str, default: Optional[int] = None) -> Optional[int]:
 		item = self._items.get(key)
 		if item is None:
-			return default
+			return None if default is None else int(default)
 		item.read = True
 		intv = item._parse_int()
 		if intv is None:
 			raise item._error(f'Value {repr(item.value)} for {item.key} is not a valid integer.')
 		return intv
+
+	def get_float(self, key: str, default: Optional[float] = None) -> Optional[float]:
+		item = self._items.get(key)
+		if item is None:
+			return None if default is None else float(default)
+		item.read = True
+		intv = item._parse_float()
+		if intv is None:
+			raise item._error(f'Value {repr(item.value)} for {item.key} is not a valid number.')
+		return intv
+
+	def get_bool(self, key: str, default: Optional[bool] = None) -> Optional[bool]:
+		item = self._items.get(key)
+		if item is None:
+			return None if default is None else bool(default)
+		item.read = True
+		boolv = item._parse_bool()
+		if boolv is None:
+			raise item._error(f'Value {repr(item.value)} for {item.key} is invalid (want on/off/yes/no/true/false)')
+		return boolv
 
 	def items(self) -> Iterable[Item]:
 		import copy
