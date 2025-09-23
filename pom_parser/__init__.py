@@ -1,8 +1,14 @@
+r'''Configuration for the [POM configuration file format](https://www.pom.computer).
+
+\mainpage pom_parser
+
+See \ref pom_parser.
+'''
 import io
 from typing import Optional, Any, Iterable, Iterator
 
 class Error(ValueError):
-	r'''!An error raised by pom_parser.
+	r'''An error raised by pom_parser.
 
 Attributes
 ----------
@@ -43,7 +49,7 @@ Attributes
 		return l[0]
 
 class Item:
-	r'''!
+	r'''
 An item (key-value pair) in a POM configuration.
 
 Attributes
@@ -145,7 +151,7 @@ Attributes
 		return list_
 
 class Configuration:
-	'''!A POM configuration.'''
+	r'''A POM configuration.'''
 	_items: dict[str, Item]
 	_section_locations: dict[str, tuple[str, int]]
 	def __repr__(self) -> str:
@@ -158,8 +164,8 @@ class Configuration:
 		self._items = items
 		self._section_locations = {}
 		for item in self._items.values():
-			for i in range(len(item.key)):
-				if item.key[i] != '.':
+			for (i, c) in enumerate(item.key):
+				if c != '.':
 					continue
 				section = item.key[:i]
 				if section not in self._section_locations \
@@ -167,15 +173,22 @@ class Configuration:
 					self._section_locations[section] = (item.file, item.line)
 
 	def has(self, key: str) -> bool:
+		r'''Returns whether this configuration contains `key`.'''
 		return key in self._items
 
 	def location(self, key: str) -> Optional[tuple[str, int]]:
+		r'''Returns the location of `key` as `(filename, line_number)`, or `None` if it's not defined.'''
 		item = self._items.get(key)
 		if item is None:
 			return self._section_locations.get(key, None)
 		return (item.file, item.line)
 
 	def get(self, key: str, default: Optional[str] = None) -> Optional[str]:
+		r'''Get value associated with `key`.
+
+\param key Key to look up
+\param default Default to use when `key` is not defined
+		'''
 		item = self._items.get(key)
 		if item is None:
 			return default
@@ -183,6 +196,14 @@ class Configuration:
 		return item.value
 
 	def get_uint(self, key: str, default: Optional[int] = None) -> Optional[int]:
+		r'''Get value associated with `key`, and parse as an unsigned integer.
+
+\param key Key to look up
+\param default Default to use when `key` is not defined
+
+\exception pom_parser.Error The key is defined, but its value is
+not a valid unsigned integer (< 2^53).
+		'''
 		item = self._items.get(key)
 		if item is None:
 			return None if default is None else int(default)
@@ -194,6 +215,14 @@ class Configuration:
 		return uint
 
 	def get_int(self, key: str, default: Optional[int] = None) -> Optional[int]:
+		r'''Get value associated with `key`, and parse as an integer.
+
+\param key Key to look up
+\param default Default to use when `key` is not defined
+
+\exception pom_parser.Error The key is defined, but
+its value is not a valid integer (with absolute value < 2^53).
+		'''
 		item = self._items.get(key)
 		if item is None:
 			return None if default is None else int(default)
@@ -204,6 +233,13 @@ class Configuration:
 		return intv
 
 	def get_float(self, key: str, default: Optional[float] = None) -> Optional[float]:
+		r'''Get value associated with `key`, and parse as a floating-point number.
+
+\param key Key to look up
+\param default Default to use when `key` is not defined
+
+\exception pom_parser.Error The key is defined, but its value is not a valid floating-point number.
+		'''
 		item = self._items.get(key)
 		if item is None:
 			return None if default is None else float(default)
@@ -214,6 +250,13 @@ class Configuration:
 		return intv
 
 	def get_bool(self, key: str, default: Optional[bool] = None) -> Optional[bool]:
+		r'''Get value associated with `key`, and parse as a boolean (yes/no/on/off/true/false).
+
+\param key Key to look up
+\param default Default to use when `key` is not defined
+
+\exception pom_parser.Error The key is defined, but its value is not one of the six mentioned above.
+		'''
 		item = self._items.get(key)
 		if item is None:
 			return None if default is None else bool(default)
@@ -225,6 +268,13 @@ class Configuration:
 		return boolv
 
 	def get_list(self, key: str, default: Optional[list[str]] = None) -> Optional[list[str]]:
+		r'''Get value associated with `key`, and parse as a comma-separated list.
+
+Literal commas can be included in the list by using `\,`.
+
+\param key Key to look up
+\param default Default to use when `key` is not defined
+		'''
 		item = self._items.get(key)
 		if item is None:
 			return None if default is None else default
@@ -232,17 +282,31 @@ class Configuration:
 		return item._parse_list()
 
 
-	def items(self) -> Iterable[Item]:
-		import copy
-		return map(copy.copy, self._items.values())
+	def items(self) -> Iterator[Item]:
+		r'''Get all items (key-value pairs) in configuration.
 
-	def keys(self) -> Iterable[str]:
+The order of the returned items is arbitrary and may change in future versions.'''
+		import copy
+		return iter(map(copy.copy, self._items.values()))
+
+	def keys(self) -> Iterator[str]:
+		r'''Get all "direct" keys (unique first components of keys) in configuration.
+
+The order of the returned keys is arbitrary and may change in future versions.'''
 		return iter({key.split('.', 1)[0] for key in self._items})
 
-	def unread_keys(self) -> Iterable[str]:
+	def unread_keys(self) -> Iterator[str]:
+		r'''Get all keys which have not been accessed using a `get_*` method.
+
+The order of the returned keys is arbitrary and may change in future versions.'''
 		return (item.key for item in self._items.values() if not item.read)
 
 	def section(self, name: str) -> 'Configuration':
+		r'''Extract a "section" out of a configuration.
+
+Specifically, this will return a configuration consisting of all keys starting
+with `name.` (with the `name.` stripped out) and their values.
+'''
 		import copy
 		section_items = {}
 		name_dot = name + '.'
@@ -255,9 +319,10 @@ class Configuration:
 		return conf
 
 	def merge(self, other: 'Configuration') -> 'Configuration':
+		'''Merge `other` configuration into `self`, preferring values in `other`.'''
 		import copy
 		new_items = {key: copy.copy(item) for key, item in other._items.items()}
-		for key, item in self._items:
+		for key, item in self._items.items():
 			if key not in new_items:
 				new_items[key] = copy.copy(item)
 		conf = Configuration()
@@ -274,7 +339,7 @@ def _parse_hex_digit(d: Optional[str]) -> Optional[int]:
 		return ord(d) - ord('A') + 10
 	return None
 
-class __Parser:
+class _Parser:
 	line_number: int
 	filename: str
 	current_section: str
@@ -442,7 +507,13 @@ class __Parser:
 		return True
 
 def load_file(filename: str, file: io.BufferedIOBase) -> Configuration:
-	parser = __Parser(filename, file)
+	r'''Load a configuration from a file object.
+
+\param filename File name to use for errors.
+\param file File object, such as one returned from `open`.
+
+\exception pom_parser.Error The configuration is invalid in some way.'''
+	parser = _Parser(filename, file)
 	while parser._parse_line():
 		pass
 	if parser.errors:
@@ -452,8 +523,17 @@ def load_file(filename: str, file: io.BufferedIOBase) -> Configuration:
 	return conf
 
 def load_string(filename: str, string: str) -> Configuration:
+	r'''Load a configuration from a string.
+
+\param filename File name to use for errors.
+\param string String containing configuration.
+
+\exception pom_parser.Error The configuration is invalid in some way.'''
 	return load_file(filename, io.BytesIO(string.encode()))
 
 def load_path(path: str) -> Configuration:
+	r'''Load a configuration from a file path.
+
+\exception pom_parser.Error The configuration is invalid in some way.'''
 	with open(path, 'rb') as file:
 		return load_file(path, file)
