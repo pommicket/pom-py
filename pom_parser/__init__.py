@@ -508,6 +508,8 @@ class _Parser:
 		item.value = value
 		item.file = self.filename
 		item.line = self.line_number
+		if prev_item := self.items.get(key):
+			self._error(f'Re-definition of {key} (first definition was on line {prev_item.line})')
 		self.items[key] = item
 		return True
 
