@@ -437,6 +437,9 @@ class _Parser:
 		except UnicodeDecodeError:
 			self._error('Bad UTF-8')
 			return ''
+		if self.line_number == 1 and line.startswith('\ufeff'):
+			# skip byte order mark
+			line = line[1:]
 		if line.endswith('\r\n'):
 			line = line[:-2]
 		elif line.endswith('\n'):
@@ -496,6 +499,8 @@ class _Parser:
 		value = line[equals_idx+1:].lstrip(' \t')
 		if value.startswith('"') or value.startswith('`'):
 			value = self._parse_quoted_value(value)
+		else:
+			value = value.rstrip(' \t')
 		key = f'{self.current_section}.{relative_key}' if self.current_section else relative_key
 		item = Item()
 		item.key = key
