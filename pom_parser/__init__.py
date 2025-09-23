@@ -478,6 +478,7 @@ class _Parser:
 		line = self._read_line()
 		if line is None:
 			return False
+		start_line_number = self.line_number
 		line = line.lstrip(' \t')
 		if not line or line.startswith('#'):
 			return True
@@ -507,7 +508,7 @@ class _Parser:
 		item.read = False
 		item.value = value
 		item.file = self.filename
-		item.line = self.line_number
+		item.line = start_line_number
 		if prev_item := self.items.get(key):
 			self._error(f'Re-definition of {key} (first definition was on line {prev_item.line})')
 		self.items[key] = item
