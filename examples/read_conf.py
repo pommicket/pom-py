@@ -9,6 +9,6 @@ import pom_parser
 try:
 	filename = 'examples/conf.pom' if len(sys.argv) < 2 else sys.argv[1]
 	conf = pom_parser.load_path(filename)
-	print(conf.get_list('file-extensions.C',['a']))
+	print(conf.location('file-extensions'))
 except pom_parser.Error as e:
 	print('Parse error:', str(e), sep = '\n')

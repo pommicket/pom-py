@@ -2,6 +2,22 @@ import io
 from typing import Optional, Any, Iterable, Iterator
 
 class Error(ValueError):
+	r'''!An error raised by pom_parser.
+
+Attributes
+----------
+- `next: Optional[Error]` -
+	Next error (used when there are multiple errors in a file)
+- `message: str` -
+	Error message as a string. Note that this does not include
+	file/line information, or all errors in a list, so you most
+	likely want to use str(error) instead.
+- `file: str` -
+	File name where error occurred.
+- `line: int` -
+	Line number where error occurred.
+'''
+
 	next: Optional['Error']
 	message: str
 	file: str
@@ -27,6 +43,22 @@ class Error(ValueError):
 		return l[0]
 
 class Item:
+	r'''!
+An item (key-value pair) in a POM configuration.
+
+Attributes
+----------
+- `key: str` -
+	The key.
+- `value: str` -
+	The value.
+- `file: str` -
+	File name where item was defined.
+- `line: int` -
+	Line number where item was defined.
+- `read: bool` -
+	Has this item been accessed by a \ref pom_parser.Configuration `get_*` method?
+'''
 	key: str
 	value: str
 	file: str
@@ -113,12 +145,26 @@ class Item:
 		return list_
 
 class Configuration:
+	'''!A POM configuration.'''
 	_items: dict[str, Item]
+	_section_locations: dict[str, tuple[str, int]]
 	def __repr__(self) -> str:
 		result = []
 		for item in self._items.values():
 			result.append(f'{item.key}: {repr(item.value)}')
 		return '\n'.join(result)
+
+	def _init(self, items: dict[str, Item]) -> None:
+		self._items = items
+		self._section_locations = {}
+		for item in self._items.values():
+			for i in range(len(item.key)):
+				if item.key[i] != '.':
+					continue
+				section = item.key[:i]
+				if section not in self._section_locations \
+					or self._section_locations[section][1] > item.line:
+					self._section_locations[section] = (item.file, item.line)
 
 	def has(self, key: str) -> bool:
 		return key in self._items
@@ -126,7 +172,7 @@ class Configuration:
 	def location(self, key: str) -> Optional[tuple[str, int]]:
 		item = self._items.get(key)
 		if item is None:
-			return item
+			return self._section_locations.get(key, None)
 		return (item.file, item.line)
 
 	def get(self, key: str, default: Optional[str] = None) -> Optional[str]:
@@ -143,7 +189,8 @@ class Configuration:
 		item.read = True
 		uint = item._parse_uint()
 		if uint is None:
-			raise item._error(f'Value {repr(item.value)} for {item.key} is not a valid (non-negative) integer.')
+			raise item._error(f'Value {repr(item.value)} for {item.key} is '
+				'not a valid (non-negative) integer.')
 		return uint
 
 	def get_int(self, key: str, default: Optional[int] = None) -> Optional[int]:
@@ -173,7 +220,8 @@ class Configuration:
 		item.read = True
 		boolv = item._parse_bool()
 		if boolv is None:
-			raise item._error(f'Value {repr(item.value)} for {item.key} is invalid (want on/off/yes/no/true/false)')
+			raise item._error(f'Value {repr(item.value)} for {item.key} is '
+				'invalid (want on/off/yes/no/true/false)')
 		return boolv
 
 	def get_list(self, key: str, default: Optional[list[str]] = None) -> Optional[list[str]]:
@@ -203,8 +251,19 @@ class Configuration:
 				item_copy = copy.copy(item)
 				section_items[item.key[len(name_dot):]] = item_copy
 		conf = Configuration()
-		conf._items = section_items
+		conf._init(section_items)
 		return conf
+
+	def merge(self, other: 'Configuration') -> 'Configuration':
+		import copy
+		new_items = {key: copy.copy(item) for key, item in other._items.items()}
+		for key, item in self._items:
+			if key not in new_items:
+				new_items[key] = copy.copy(item)
+		conf = Configuration()
+		conf._init(new_items)
+		return conf
+
 
 def _parse_hex_digit(d: Optional[str]) -> Optional[int]:
 	if d in list('0123456789'):
@@ -215,7 +274,7 @@ def _parse_hex_digit(d: Optional[str]) -> Optional[int]:
 		return ord(d) - ord('A') + 10
 	return None
 
-class _Parser:
+class __Parser:
 	line_number: int
 	filename: str
 	current_section: str
@@ -383,13 +442,13 @@ class _Parser:
 		return True
 
 def load_file(filename: str, file: io.BufferedIOBase) -> Configuration:
-	parser = _Parser(filename, file)
+	parser = __Parser(filename, file)
 	while parser._parse_line():
 		pass
 	if parser.errors:
 		raise Error._from_list(parser.errors)
 	conf = Configuration()
-	conf._items = parser.items
+	conf._init(parser.items)
 	return conf
 
 def load_string(filename: str, string: str) -> Configuration:
