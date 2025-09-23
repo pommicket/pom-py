@@ -1,3 +1,6 @@
+# TODO:
+#   - clean up read_conf example
+#   - add all_functions example
 r'''Configuration for the [POM configuration file format](https://www.pom.computer).
 
 \mainpage pom_parser
@@ -93,6 +96,8 @@ Attributes
 			return None
 		if not all(c in '0123456789' for c in s):
 			return None
+		if s == '':
+			return None
 		value = int(s)
 		if value >> 53:
 			return None
@@ -120,7 +125,10 @@ Attributes
 			if c == '.' and (i == 0 or i == len(value)-1 or \
 				not value[i+1].isdigit() or not value[i-1].isdigit()):
 				return None
-		return float(value)
+		try:
+			return float(value)
+		except ValueError:
+			return None
 
 	def _parse_bool(self) -> Optional[bool]:
 		value = self.value
@@ -136,7 +144,7 @@ Attributes
 		entry: list[str] = []
 		while (c := next(chars, '')):
 			if c == ',':
-				list_.append(''.join(entry).strip(' \t'))
+				list_.append(''.join(entry).strip(' \t\n'))
 				entry = []
 			elif c == '\\':
 				c = next(chars, '')
@@ -145,7 +153,7 @@ Attributes
 				entry.append(c)
 			else:
 				entry.append(c)
-		last_entry = ''.join(entry).strip(' \t')
+		last_entry = ''.join(entry).strip(' \t\n')
 		if last_entry:
 			list_.append(last_entry)
 		return list_
