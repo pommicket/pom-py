@@ -92,6 +92,26 @@ class Item:
 			return False
 		return None
 
+	def _parse_list(self) -> list[str]:
+		chars = iter(self.value)
+		list_ = []
+		entry: list[str] = []
+		while (c := next(chars, '')):
+			if c == ',':
+				list_.append(''.join(entry).strip(' \t'))
+				entry = []
+			elif c == '\\':
+				c = next(chars, '')
+				if c not in ',\\':
+					entry.append('\\')
+				entry.append(c)
+			else:
+				entry.append(c)
+		last_entry = ''.join(entry).strip(' \t')
+		if last_entry:
+			list_.append(last_entry)
+		return list_
+
 class Configuration:
 	_items: dict[str, Item]
 	def __repr__(self) -> str:
@@ -155,6 +175,14 @@ class Configuration:
 		if boolv is None:
 			raise item._error(f'Value {repr(item.value)} for {item.key} is invalid (want on/off/yes/no/true/false)')
 		return boolv
+
+	def get_list(self, key: str, default: Optional[list[str]] = None) -> Optional[list[str]]:
+		item = self._items.get(key)
+		if item is None:
+			return None if default is None else default
+		item.read = True
+		return item._parse_list()
+
 
 	def items(self) -> Iterable[Item]:
 		import copy
