@@ -1,6 +1,3 @@
-# TODO:
-#   - clean up read_conf example
-#   - add all_functions example
 r'''Configuration for the [POM configuration file format](https://www.pom.computer).
 
 \mainpage pom_parser
@@ -51,6 +48,7 @@ Attributes
 			e.next = l[i+1]
 		return l[0]
 
+
 class Item:
 	r'''
 An item (key-value pair) in a POM configuration.
@@ -65,16 +63,20 @@ Attributes
 	File name where item was defined.
 - `line: int` -
 	Line number where item was defined.
-- `read: bool` -
-	Has this item been accessed by a \ref pom_parser.Configuration `get_*` method?
 '''
 	key: str
 	value: str
 	file: str
 	line: int
-	read: bool
+	# This is a list so we can pass it around by reference
+	_read: list[bool]
+
 	def __repr__(self) -> str:
 		return f'<Item {self.key} at {self.file}:{self.line}>'
+
+	def read(self) -> bool:
+		'''Returns whether this item's value has been accessed through `Configuration.get_*`.'''
+		return self._read[0]
 
 	def _error(self, message: str) -> Error:
 		return Error(self.file, self.line, message)
@@ -102,6 +104,9 @@ Attributes
 		if value >> 53:
 			return None
 		return value
+
+	def _set_read(self) -> None:
+		self._read[0] = True
 
 	def _parse_int(self) -> Optional[int]:
 		sign = 1
@@ -162,11 +167,18 @@ class Configuration:
 	r'''A POM configuration.'''
 	_items: dict[str, Item]
 	_section_locations: dict[str, tuple[str, int]]
-	def __repr__(self) -> str:
+	def __str__(self) -> str:
 		result = []
 		for item in self._items.values():
-			result.append(f'{item.key}: {repr(item.value)}')
+			result.append(f'{item.key} = {repr(item.value)}')
 		return '\n'.join(result)
+
+	def __iter__(self) -> Iterator[Item]:
+		r'''Get all items (key-value pairs) in configuration.
+
+The order of the returned items is arbitrary and may change in future versions.'''
+		import copy
+		return iter(map(copy.copy, self._items.values()))
 
 	def _init(self, items: dict[str, Item]) -> None:
 		self._items = items
@@ -200,7 +212,7 @@ class Configuration:
 		item = self._items.get(key)
 		if item is None:
 			return default
-		item.read = True
+		item._set_read()
 		return item.value
 
 	def get_uint(self, key: str, default: Optional[int] = None) -> Optional[int]:
@@ -215,7 +227,7 @@ not a valid unsigned integer (< 2^53).
 		item = self._items.get(key)
 		if item is None:
 			return None if default is None else int(default)
-		item.read = True
+		item._set_read()
 		uint = item._parse_uint()
 		if uint is None:
 			raise item._error(f'Value {repr(item.value)} for {item.key} is '
@@ -234,7 +246,7 @@ its value is not a valid integer (with absolute value < 2^53).
 		item = self._items.get(key)
 		if item is None:
 			return None if default is None else int(default)
-		item.read = True
+		item._set_read()
 		intv = item._parse_int()
 		if intv is None:
 			raise item._error(f'Value {repr(item.value)} for {item.key} is not a valid integer.')
@@ -251,7 +263,7 @@ its value is not a valid integer (with absolute value < 2^53).
 		item = self._items.get(key)
 		if item is None:
 			return None if default is None else float(default)
-		item.read = True
+		item._set_read()
 		intv = item._parse_float()
 		if intv is None:
 			raise item._error(f'Value {repr(item.value)} for {item.key} is not a valid number.')
@@ -268,7 +280,7 @@ its value is not a valid integer (with absolute value < 2^53).
 		item = self._items.get(key)
 		if item is None:
 			return None if default is None else bool(default)
-		item.read = True
+		item._set_read()
 		boolv = item._parse_bool()
 		if boolv is None:
 			raise item._error(f'Value {repr(item.value)} for {item.key} is '
@@ -286,16 +298,9 @@ Literal commas can be included in the list by using `\,`.
 		item = self._items.get(key)
 		if item is None:
 			return None if default is None else default
-		item.read = True
+		item._set_read()
 		return item._parse_list()
 
-
-	def items(self) -> Iterator[Item]:
-		r'''Get all items (key-value pairs) in configuration.
-
-The order of the returned items is arbitrary and may change in future versions.'''
-		import copy
-		return iter(map(copy.copy, self._items.values()))
 
 	def keys(self) -> Iterator[str]:
 		r'''Get all "direct" keys (unique first components of keys) in configuration.
@@ -307,7 +312,7 @@ The order of the returned keys is arbitrary and may change in future versions.''
 		r'''Get all keys which have not been accessed using a `get_*` method.
 
 The order of the returned keys is arbitrary and may change in future versions.'''
-		return (item.key for item in self._items.values() if not item.read)
+		return (item.key for item in self._items.values() if not item.read())
 
 	def section(self, name: str) -> 'Configuration':
 		r'''Extract a "section" out of a configuration.
@@ -318,10 +323,12 @@ with `name.` (with the `name.` stripped out) and their values.
 		import copy
 		section_items = {}
 		name_dot = name + '.'
-		for item in self.items():
+		for item in self:
 			if item.key.startswith(name_dot):
 				item_copy = copy.copy(item)
-				section_items[item.key[len(name_dot):]] = item_copy
+				new_key = item.key[len(name_dot):]
+				item_copy.key = new_key
+				section_items[new_key] = item_copy
 		conf = Configuration()
 		conf._init(section_items)
 		return conf
@@ -513,7 +520,7 @@ class _Parser:
 		key = f'{self.current_section}.{relative_key}' if self.current_section else relative_key
 		item = Item()
 		item.key = key
-		item.read = False
+		item._read = [False]
 		item.value = value
 		item.file = self.filename
 		item.line = start_line_number
