@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pom_parser"
-version = "0.0.1"
+version = "0.0.2"
 authors = [
   { name="pommicket", email="pommicket@gmail.com" },
 ]
@@ -19,4 +19,5 @@ license = "0BSD"
 
 [project.urls]
 Homepage = "https://pom.computer"
+Repository = "https://github.com/pommicket/pom-py"
 Issues = "https://github.com/pommicket/pom-py/issues"
